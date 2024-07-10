@@ -20,4 +20,4 @@ jobs:
         with:
           auto_approve: true
           variables: |
-                    spotify_api_key = ${{ secrets.SPOTIFY_API_KEY }}
+                    spotify_api_key = "${{ secrets.SPOTIFY_API_KEY }}"
