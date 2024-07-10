@@ -1,10 +1,8 @@
 name: Update playlist with Spotify Auth
-
 on:
   push:
     branches:
       - main
-
 jobs:
   spotify-auth-and-apply:
     runs-on: ubuntu-latest
@@ -12,22 +10,61 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+      
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.18.0'
-
+      
       - name: Install spotify_auth_proxy
         run: go install github.com/conradludgate/terraform-provider-spotify/spotify_auth_proxy@latest
-
-      - name: Run spotify_auth_proxy
+      
+      - name: Run spotify_auth_proxy and capture Auth URL
         env:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           SPOTIFY_CLIENT_REDIRECT_URI: ${{ secrets.SPOTIFY_CLIENT_REDIRECT_URI }}
-        run: spotify_auth_proxy
+        run: |
+          output=$(spotify_auth_proxy)
+          echo "$output"
+          auth_url=$(echo "$output" | grep "Auth URL:" | awk '{print $3}')
+          echo "AUTH_URL=$auth_url" >> $GITHUB_ENV
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      
+      - name: Install Puppeteer
+        run: npm install puppeteer
+      
+      - name: Perform Spotify login
+        env:
+          SPOTIFY_USERNAME: ${{ secrets.SPOTIFY_USERNAME }}
+          SPOTIFY_PASSWORD: ${{ secrets.SPOTIFY_PASSWORD }}
+        run: |
+          node - <<EOF
+          const puppeteer = require('puppeteer');
 
-
-
-
+          (async () => {
+            const browser = await puppeteer.launch({ headless: true });
+            const page = await browser.newPage();
+            
+            await page.goto('${{ env.AUTH_URL }}');
+            
+            // Wait for login form and fill in credentials
+            await page.waitForSelector('#login-username');
+            await page.type('#login-username', process.env.SPOTIFY_USERNAME);
+            await page.type('#login-password', process.env.SPOTIFY_PASSWORD);
+            
+            // Submit the form
+            await page.click('#login-button');
+            
+            // Wait for redirect or confirmation
+            await page.waitForNavigation();
+            
+            console.log('Login successful');
+            
+            await browser.close();
+          })();
+          EOF
