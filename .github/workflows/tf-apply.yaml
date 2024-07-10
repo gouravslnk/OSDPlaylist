@@ -80,7 +80,7 @@ jobs:
           EOF
       - name: Run Terraform Apply
         env:
-          SPOTIFY_API_KEY: ${{ env.SPOTIFY_API_KEY }}
+          TF_VAR_SPOTIFY_API_KEY: ${{ env.SPOTIFY_API_KEY }}
         run: |
           terraform init
           terraform apply -auto-approve
