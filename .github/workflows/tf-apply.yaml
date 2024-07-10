@@ -8,22 +8,19 @@ on:
 jobs:
   spotify_auth_and_apply:
     runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/conradludgate/spotify-auth-proxy:latest
-      env:
-        SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
-        SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
-        SPOTIFY_REDIRECT_URI: ${{ secrets.SPOTIFY_REDIRECT_URI }}
-      ports:
-        - 27228:27228
-
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v2
 
       - name: Run Spotify Auth Proxy
         run: |
-          /app/spotify-auth-proxy &
+          docker run -d --name spotify-auth-proxy \
+            -p 27228:27228 \
+            -e SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }} \
+            -e SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }} \
+            -e SPOTIFY_REDIRECT_URI=${{ secrets.SPOTIFY_REDIRECT_URI }} \
+            ghcr.io/conradludgate/spotify-auth-proxy:latest
           sleep 5  # Give the server a moment to start
 
       - name: Get Auth URL and API Key
@@ -33,7 +30,7 @@ jobs:
           echo "Auth URL: $AUTH_URL"
           echo "Please visit the Auth URL and complete the authentication process"
           echo "Waiting for authentication..."
-          API_KEY=$(curl -s http://localhost:27228/api-key)
+          API_KEY=$(curl -s --retry 30 --retry-delay 10 http://localhost:27228/api-key)
           echo "::add-mask::$API_KEY"
           echo "SPOTIFY_API_KEY=$API_KEY" >> $GITHUB_ENV
 
@@ -43,3 +40,7 @@ jobs:
           auto_approve: true
           variables: |
             spotify_api_key = "${{ env.SPOTIFY_API_KEY }}"
+
+      - name: Stop Spotify Auth Proxy
+        if: always()
+        run: docker stop spotify-auth-proxy
