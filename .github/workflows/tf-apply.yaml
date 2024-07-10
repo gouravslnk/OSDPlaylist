@@ -35,7 +35,7 @@ jobs:
       uses: trstringer/manual-approval@v1
       with:
         secret: ${{ secrets.GITHUB_TOKEN }}
-        approvers: your-github-username
+        approvers: codeblech
         minimum-approvals: 1
         message: "Please approve by visiting the Auth URL and completing the authorization process: ${{ steps.spotify-auth.outputs.AUTH_URL }}"
 
