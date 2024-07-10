@@ -15,12 +15,11 @@ jobs:
 
       - name: Run Spotify Auth Proxy
         run: |
-          docker run -d --name spotify-auth-proxy \
-          -p 27228:27228 \
-          -e SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }} \
-          -e SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }} \
-          -e SPOTIFY_REDIRECT_URI=${{ secrets.SPOTIFY_REDIRECT_URI }} \
-          ghcr.io/conradludgate/spotify-auth-proxy:latest
+          docker run -d --name spotify-auth-proxy -p 27228:27228 \
+            -e SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }} \
+            -e SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }} \
+            -e SPOTIFY_REDIRECT_URI=${{ secrets.SPOTIFY_REDIRECT_URI }} \
+            ghcr.io/conradludgate/spotify-auth-proxy:latest
           sleep 5  # Give the server a moment to start
 
       - name: Get Auth URL and API Key
