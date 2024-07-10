@@ -60,26 +60,27 @@ jobs:
             const browser = await puppeteer.launch({ headless: true });
             const page = await browser.newPage();
 
-            await page.goto('${{ env.AUTH_URL }}');
+            try {
+              await page.goto('${{ env.AUTH_URL }}');
 
-            // Wait for login form and fill in credentials
-            await page.waitForSelector('#login-username');
-            await page.type('#login-username', process.env.SPOTIFY_USERNAME);
-            await page.type('#login-password', process.env.SPOTIFY_PASSWORD);
+              // Wait for login form and fill in credentials
+              await page.waitForSelector('#login-username');
+              await page.type('#login-username', process.env.SPOTIFY_USERNAME);
+              await page.type('#login-password', process.env.SPOTIFY_PASSWORD);
 
-            // Submit the form
-            await page.click('#login-button');
+              // Submit the form
+              await page.click('#login-button');
 
-            // Wait for redirect and authorization
+              // Wait for redirect and authorization
               await page.waitForNavigation({ waitUntil: 'networkidle0' });
 
-            // Check for successful authorization
-            const content = await page.content();
-            if (content.includes('Authorization successful')) {
-              console.log('Spotify authorization successful');
-            } else {
-              throw new Error('Authorization not successful');
-            }
+              // Check for successful authorization
+              const content = await page.content();
+              if (content.includes('Authorization successful')) {
+                console.log('Spotify authorization successful');
+              } else {
+                throw new Error('Authorization not successful');
+              }
             } catch (error) {
               console.error('Error during Spotify login:', error);
               process.exit(1);
@@ -87,7 +88,6 @@ jobs:
               await browser.close();
             }
           })();
-          EOF
           EOF
       - name: Run Terraform Apply
         run: |
