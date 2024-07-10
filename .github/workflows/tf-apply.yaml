@@ -25,10 +25,18 @@ jobs:
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           SPOTIFY_CLIENT_REDIRECT_URI: ${{ secrets.SPOTIFY_CLIENT_REDIRECT_URI }}
         run: |
-          output=$(spotify_auth_proxy)
-          echo "$output"
-          auth_url=$(echo "$output" | grep "Auth URL:" | awk '{print $3}')
+          spotify_auth_proxy > proxy_output.log 2>&1 &
+          PROXY_PID=$!
+          echo "PROXY_PID=$PROXY_PID" >> $GITHUB_ENV
+          
+          # Wait for the Auth URL to appear in the log
+          while ! grep -q "Auth URL:" proxy_output.log; do
+            sleep 1
+          done
+          
+          auth_url=$(grep "Auth URL:" proxy_output.log | awk '{print $3}')
           echo "AUTH_URL=$auth_url" >> $GITHUB_ENV
+      
       
       - name: Setup Node.js
         uses: actions/setup-node@v3
