@@ -1,4 +1,4 @@
-name: Update playlist with Spotify Auth
+name: Update playlist
 
 on:
   push:
@@ -6,40 +6,46 @@ on:
       - main
 
 jobs:
-  spotify_auth_and_apply:
+  apply:
     runs-on: ubuntu-latest
+    name: Apply terraform
+    env:
+      # Set environment variables here
+      PORT: 27228
+      AUTH_PROXY_IMAGE: ghcr.io/conradludgate/spotify-auth-proxy
     
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v2
 
       - name: Run Spotify Auth Proxy
+        id: spotify-auth-proxy
         run: |
-          docker run -d --name spotify-auth-proxy -p 27228:27228 \
-            -e SPOTIFY_CLIENT_ID=${{ secrets.SPOTIFY_CLIENT_ID }} \
-            -e SPOTIFY_CLIENT_SECRET=${{ secrets.SPOTIFY_CLIENT_SECRET }} \
-            -e SPOTIFY_REDIRECT_URI=${{ secrets.SPOTIFY_REDIRECT_URI }} \
-            ghcr.io/conradludgate/spotify-auth-proxy:latest
-          sleep 5  # Give the server a moment to start
-
-      - name: Get Auth URL and API Key
-        id: spotify_auth
-        run: |
-          AUTH_URL=$(curl -s http://localhost:27228/auth-url)
+          docker run --rm -it -p $PORT:$PORT --env-file ./.env $AUTH_PROXY_IMAGE > output.log 2>&1 &
+          sleep 10
+          AUTH_URL=$(grep -o 'http://[^ ]*' output.log)
           echo "Auth URL: $AUTH_URL"
-          echo "Please visit the Auth URL and complete the authentication process"
-          echo "Waiting for authentication..."
-          API_KEY=$(curl -s --retry 30 --retry-delay 10 http://localhost:27228/api-key)
-          echo "::add-mask::$API_KEY"
-          echo "SPOTIFY_API_KEY=$API_KEY" >> $GITHUB_ENV
+          echo "::set-output name=auth_url::$AUTH_URL"
 
-      - name: Apply Terraform
+      - name: Authenticate and Get API Key
+        id: get-api-key
+        run: |
+          # This is a placeholder for manual authentication step.
+          # In a real-world scenario, you might need to automate this with a headless browser or manually perform the authentication.
+          echo "Please authenticate using the following URL: ${{ steps.spotify-auth-proxy.outputs.auth_url }}"
+          read -p "Enter the API Key: " API_KEY
+          echo "::add-mask::$API_KEY"
+          echo "::set-output name=api_key::$API_KEY"
+
+      - name: Save API Key to GitHub Secrets
+        run: |
+          gh secret set SPOTIFY_API_KEY -b"${{ steps.get-api-key.outputs.api_key }}"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: terraform apply
         uses: dflook/terraform-apply@v1
         with:
           auto_approve: true
           variables: |
-            spotify_api_key = "${{ env.SPOTIFY_API_KEY }}"
-
-      - name: Stop Spotify Auth Proxy
-        if: always()
-        run: docker stop spotify-auth-proxy
+            spotify_api_key = "${{ secrets.SPOTIFY_API_KEY }}"
