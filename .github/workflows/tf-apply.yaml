@@ -12,22 +12,22 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.18.0'
-          
+
       - name: Install spotify_auth_proxy
         run: go install github.com/conradludgate/terraform-provider-spotify/spotify_auth_proxy@latest
-      
+
       - name: Run spotify_auth_proxy
         env:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           SPOTIFY_CLIENT_REDIRECT_URI: ${{ secrets.SPOTIFY_CLIENT_REDIRECT_URI }}
         run: spotify_auth_proxy
-    
-    
 
-    
+
+
+
