@@ -7,13 +7,13 @@ terraform {
   }
 }
 
-variable "SPOTIFY_API_KEY" {
-  type 		= string
-  description 	= "The spotify API key, post authentication"
-}
+# variable "SPOTIFY_API_KEY" {
+#   type 		= string
+#   description 	= "The spotify API key, post authentication"
+# }
 
 provider "spotify" {
-  api_key = var.SPOTIFY_API_KEY
+  api_key = var.spotify_api_key
 }
 
 data "spotify_search_track" "RAM" {
