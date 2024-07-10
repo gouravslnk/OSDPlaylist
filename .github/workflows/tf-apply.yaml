@@ -7,55 +7,17 @@ on:
 
 jobs:
   spotify-auth-and-apply:
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/conradludgate/spotify-auth-proxy:latest
-      env:
-        SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
-        SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
-        SPOTIFY_REDIRECT_URI: ${{ secrets.SPOTIFY_REDIRECT_URI }}
-      ports:
-        - 27228:27228
-
+    runs-on: ubuntu-latest  
+    name: Apply
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v2
-
-    - name: Run Spotify Auth Proxy
-      id: spotify-auth
-      run: |
-        echo "Starting Spotify Auth Proxy..."
-        auth_output=$(timeout 30s /app/spotify-auth-proxy 2>&1 || true)
-        echo "Auth Proxy Output: $auth_output"
-        auth_url=$(echo "$auth_output" | grep -oP 'Auth URL: \K.*')
-        echo "Auth URL: $auth_url"
-        echo "AUTH_URL=$auth_url" >> $GITHUB_OUTPUT
-
-    - name: Manual Approval
-      uses: trstringer/manual-approval@v1
+    - name: Install Go
+    - uses: actions/checkout@v4
+    - uses: actions/setup-go@v5
       with:
-        secret: ${{ secrets.GITHUB_TOKEN }}
-        approvers: codeblech
-        minimum-approvals: 1
-        message: "Please approve by visiting the Auth URL and completing the authorization process: ${{ steps.spotify-auth.outputs.AUTH_URL }}"
+        go-version: '1.16.0'
+    - run: go get -u github.com/conradludgate/terraform-provider-spotify/spotify_auth_proxy
+    - run: spotify_auth_proxy
+    
+    
 
-    - name: Get Spotify API Key
-      id: get-api-key
-      run: |
-        echo "Waiting for API Key..."
-        api_key=$(timeout 300s grep -oP 'APIKey: \K.*' <(tail -f /tmp/spotify-auth.log) || true)
-        if [ -z "$api_key" ]; then
-          echo "Failed to obtain API Key"
-          exit 1
-        fi
-        echo "API_KEY=$api_key" >> $GITHUB_OUTPUT
-
-    - name: Set up Terraform
-      uses: hashicorp/setup-terraform@v1
-
-    - name: Terraform Apply
-      env:
-        TF_VAR_spotify_api_key: ${{ steps.get-api-key.outputs.API_KEY }}
-      run: |
-        terraform init
-        terraform apply -auto-approve
+    
