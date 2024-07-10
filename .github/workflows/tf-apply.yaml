@@ -29,13 +29,15 @@ jobs:
           PROXY_PID=$!
           echo "PROXY_PID=$PROXY_PID" >> $GITHUB_ENV
           
-          # Wait for the Auth URL to appear in the log
-          while ! grep -q "Auth URL:" proxy_output.log; do
+          # Wait for the Auth URL and API Key to appear in the log
+          while ! (grep -q "Auth URL:" proxy_output.log && grep -q "APIKey:" proxy_output.log); do
             sleep 1
           done
           
           auth_url=$(grep "Auth URL:" proxy_output.log | awk '{print $3}')
+          api_key=$(grep "APIKey:" proxy_output.log | awk '{print $2}')
           echo "AUTH_URL=$auth_url" >> $GITHUB_ENV
+          echo "SPOTIFY_API_KEY=$api_key" >> $GITHUB_ENV
       
       
       - name: Setup Node.js
@@ -76,3 +78,9 @@ jobs:
             await browser.close();
           })();
           EOF
+      - name: Run Terraform Apply
+        env:
+          SPOTIFY_API_KEY: ${{ env.SPOTIFY_API_KEY }}
+        run: |
+          terraform init
+          terraform apply -auto-approve
