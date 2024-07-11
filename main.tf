@@ -7,17 +7,11 @@ terraform {
   }
 }
 
-# variable "SPOTIFY_API_KEY" {
-#   type 		= string
-#   description 	= "The spotify API key, post authentication"
-# }
-
 provider "spotify" {
   api_key = var.SPOTIFY_API_KEY
 }
 
 data "spotify_search_track" "RAM" {
-  # artist = "Daft Punk"
   album = "Random Access Memories (10th Anniversary Edition)"
   limit = 8
 }
@@ -44,9 +38,9 @@ data "spotify_track" "A_View_To_Kill" {
   url = "https://open.spotify.com/track/7fN3QQtmCMkiczQ41IuhwK?si=d0e32a11da1f4c72"
 }
 
-# data "spotify_track" "Veridis_Quo" {
-#   url = "https://open.spotify.com/track/2LD2gT7gwAurzdQDQtILds?si=392db9f1e95849e6"
-# }
+data "spotify_track" "Veridis_Quo" {
+  url = "https://open.spotify.com/track/2LD2gT7gwAurzdQDQtILds?si=392db9f1e95849e6"
+}
 resource "spotify_playlist" "playlist" {
   name        = "The CodeJam Playlist"
   description = "Wishing you make the nicest, most Randomly Accessible Memories this CodeR̶A̶M̶Jam :)"
@@ -59,6 +53,6 @@ resource "spotify_playlist" "playlist" {
     data.spotify_search_track.Parcels.tracks[*].id,
     data.spotify_track.Zenith.id,
     data.spotify_track.A_View_To_Kill.id,
-    # data.spotify_track.Veridis_Quo.id
+    data.spotify_track.Veridis_Quo.id
   ])
 }
