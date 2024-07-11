@@ -93,6 +93,7 @@
 #         run: |
 #           terraform init
 #           terraform apply -var="SPOTIFY_API_KEY=${{ env.SPOTIFY_API_KEY }}" -auto-approve
+
 name: Update playlist with Spotify Auth
 
 on:
@@ -121,6 +122,7 @@ jobs:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           SPOTIFY_REFRESH_TOKEN: ${{ secrets.SPOTIFY_REFRESH_TOKEN }}
+        id: spotify_auth
         run: |
           node - <<EOF
           const axios = require('axios');
@@ -153,7 +155,8 @@ jobs:
               );
 
               console.log('Spotify authentication successful');
-              console.log(`SPOTIFY_ACCESS_TOKEN=${response.data.access_token}`);
+              // Use GitHub Actions set-output command to save the access token
+              console.log(`::set-output name=SPOTIFY_ACCESS_TOKEN::${response.data.access_token}`);
             } catch (error) {
               console.error('Error during Spotify authentication:', error.response ? error.response.data : error.message);
               // Debug: Log the full error object
@@ -165,7 +168,8 @@ jobs:
 
       - name: Run Terraform Apply
         env:
-          SPOTIFY_ACCESS_TOKEN: ${{ env.SPOTIFY_ACCESS_TOKEN }}
+          SPOTIFY_ACCESS_TOKEN: ${{ steps.spotify_auth.outputs.SPOTIFY_ACCESS_TOKEN }}
         run: |
+          echo "Access token is set: ${{ steps.spotify_auth.outputs.SPOTIFY_ACCESS_TOKEN != '' }}"
           terraform init
           terraform apply -var="spotify_token=$SPOTIFY_ACCESS_TOKEN" -auto-approve
