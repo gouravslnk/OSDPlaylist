@@ -130,16 +130,18 @@ jobs:
 
           (async () => {
             try {
-              // Debug: Log the presence of environment variables
-              console.log('Environment variables check:');
-              console.log('SPOTIFY_CLIENT_ID is set:', !!process.env.SPOTIFY_CLIENT_ID);
-              console.log('SPOTIFY_CLIENT_SECRET is set:', !!process.env.SPOTIFY_CLIENT_SECRET);
-              console.log('SPOTIFY_REFRESH_TOKEN is set:', !!process.env.SPOTIFY_REFRESH_TOKEN);
+              // Check if all required environment variables are set
+              const requiredEnvVars = ['SPOTIFY_CLIENT_ID', 'SPOTIFY_CLIENT_SECRET', 'SPOTIFY_REFRESH_TOKEN'];
+              const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
               
-              // Debug: Log the first few characters of the refresh token (if set)
-              if (process.env.SPOTIFY_REFRESH_TOKEN) {
-                console.log('First 5 characters of SPOTIFY_REFRESH_TOKEN:', process.env.SPOTIFY_REFRESH_TOKEN.substring(0, 5));
+              if (missingEnvVars.length > 0) {
+                throw new Error(`Missing required environment variables: ${missingEnvVars.join(', ')}`);
               }
+
+              console.log('All required environment variables are set.');
+              
+              // Debug: Log the first few characters of the refresh token
+              console.log('First 5 characters of SPOTIFY_REFRESH_TOKEN:', process.env.SPOTIFY_REFRESH_TOKEN.substring(0, 5));
 
               const response = await axios.post('https://accounts.spotify.com/api/token', 
                 qs.stringify({
@@ -158,18 +160,28 @@ jobs:
               // Use GitHub Actions set-output command to save the access token
               console.log(`::set-output name=SPOTIFY_ACCESS_TOKEN::${response.data.access_token}`);
             } catch (error) {
-              console.error('Error during Spotify authentication:', error.response ? error.response.data : error.message);
-              // Debug: Log the full error object
-              console.error('Full error object:', JSON.stringify(error, null, 2));
+              console.error('Error during Spotify authentication:', error.message);
+              if (error.response) {
+                console.error('Response data:', JSON.stringify(error.response.data, null, 2));
+                console.error('Response status:', error.response.status);
+                console.error('Response headers:', JSON.stringify(error.response.headers, null, 2));
+              } else if (error.request) {
+                console.error('No response received. Request:', JSON.stringify(error.request, null, 2));
+              }
               process.exit(1);
             }
           })();
           EOF
 
       - name: Run Terraform Apply
+        if: success()
         env:
           SPOTIFY_ACCESS_TOKEN: ${{ steps.spotify_auth.outputs.SPOTIFY_ACCESS_TOKEN }}
         run: |
-          echo "Access token is set: ${{ steps.spotify_auth.outputs.SPOTIFY_ACCESS_TOKEN != '' }}"
+          if [ -z "$SPOTIFY_ACCESS_TOKEN" ]; then
+            echo "SPOTIFY_ACCESS_TOKEN is not set. Spotify authentication may have failed."
+            exit 1
+          fi
+          echo "Access token is set and not empty."
           terraform init
           terraform apply -var="spotify_token=$SPOTIFY_ACCESS_TOKEN" -auto-approve
