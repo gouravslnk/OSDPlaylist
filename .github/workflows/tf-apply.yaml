@@ -99,8 +99,6 @@ on:
   push:
     branches:
       - main
-  schedule:
-    - cron: '0 */12 * * *'  # Run every 12 hours
 
 jobs:
   spotify-auth-and-apply:
@@ -155,6 +153,10 @@ jobs:
             return Math.floor(Math.random() * (max - min + 1) + min);
           }
 
+          function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+          }
+
           async function typeWithRandomDelay(page, selector, text) {
             for (const char of text) {
               await page.type(selector, char, { delay: getRandomDelay(50, 150) });
@@ -175,10 +177,10 @@ jobs:
               await page.waitForSelector('#login-username', { visible: true });
               
               await typeWithRandomDelay(page, '#login-username', process.env.SPOTIFY_USERNAME);
-              await page.waitForTimeout(getRandomDelay(500, 1500));
+              await delay(getRandomDelay(500, 1500));
               await typeWithRandomDelay(page, '#login-password', process.env.SPOTIFY_PASSWORD);
               
-              await page.waitForTimeout(getRandomDelay(1000, 2000));
+              await delay(getRandomDelay(1000, 2000));
               await page.click('#login-button');
               
               await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 60000 });
