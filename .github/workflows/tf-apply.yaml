@@ -99,7 +99,6 @@ on:
   push:
     branches:
       - main
-
 jobs:
   spotify-auth-and-apply:
     runs-on: ubuntu-latest
@@ -141,7 +140,7 @@ jobs:
       - name: Install Puppeteer
         run: npm install puppeteer
 
-      - name: Perform Spotify login
+      - name: Perform Spotify login and authorization
         env:
           SPOTIFY_USERNAME: ${{ secrets.SPOTIFY_USERNAME }}
           SPOTIFY_PASSWORD: ${{ secrets.SPOTIFY_PASSWORD }}
@@ -160,6 +159,18 @@ jobs:
           async function typeWithRandomDelay(page, selector, text) {
             for (const char of text) {
               await page.type(selector, char, { delay: getRandomDelay(50, 150) });
+            }
+          }
+
+          async function waitForSelectorWithTimeout(page, selector, timeout) {
+            try {
+              await page.waitForSelector(selector, { visible: true, timeout: timeout });
+              return true;
+            } catch (error) {
+              if (error.name === 'TimeoutError') {
+                return false;
+              }
+              throw error;
             }
           }
 
@@ -183,16 +194,26 @@ jobs:
               await delay(getRandomDelay(1000, 2000));
               await page.click('#login-button');
               
-              await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 60000 });
+              // Wait for either the authorization button or successful authorization
+              const authAcceptSelector = '#auth-accept';
+              const authSuccessTimeout = 20000; // 20 seconds
+              
+              const isAuthAcceptPresent = await waitForSelectorWithTimeout(page, authAcceptSelector, authSuccessTimeout);
+              
+              if (isAuthAcceptPresent) {
+                console.log('Permission request detected. Accepting...');
+                await page.click(authAcceptSelector);
+                await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 });
+              }
               
               const content = await page.content();
-              if (content.includes('Authorization successful')) {
+              if (content.includes('Authorization successful') || content.includes('callback?code=')) {
                 console.log('Spotify authorization successful');
               } else {
                 throw new Error('Authorization not successful');
               }
             } catch (error) {
-              console.error('Error during Spotify login:', error);
+              console.error('Error during Spotify login or authorization:', error);
               process.exit(1);
             } finally {
               await browser.close();
