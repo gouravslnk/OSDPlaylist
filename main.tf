@@ -18,7 +18,7 @@ data "spotify_search_track" "RAM" {
 
 data "spotify_search_track" "LImperatrice" {
   artist = "L'Impératrice"
-  limit = 10
+  limit = 8
 }
 
 data "spotify_search_track" "Odyssee" {
