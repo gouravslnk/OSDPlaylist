@@ -13,12 +13,12 @@ provider "spotify" {
 
 data "spotify_search_track" "RAM" {
   album = "Random Access Memories (10th Anniversary Edition)"
-  limit = 8
+  limit = 7
 }
 
 data "spotify_search_track" "LImperatrice" {
   artist = "L'Impératrice"
-  limit = 8
+  limit = 7
 }
 
 data "spotify_search_track" "Odyssee" {
@@ -27,7 +27,7 @@ data "spotify_search_track" "Odyssee" {
 
 data "spotify_search_track" "Parcels" {
   artist = "Parcels"
-  limit = 8
+  limit = 7
 }
 
 data "spotify_track" "Zenith" {
