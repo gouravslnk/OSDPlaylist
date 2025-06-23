@@ -105,6 +105,7 @@ jobs:
   spotify-auth-and-apply:
     runs-on: ubuntu-latest
     name: Apply
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -125,7 +126,6 @@ jobs:
         run: |
           spotify_auth_proxy > proxy_output.log 2>&1 &
           PROXY_PID=$!
-          echo "PROXY_PID=$PROXY_PID" >> $GITHUB_ENV
           echo "Waiting for Auth URL and API Key..."
           for i in {1..30}; do
             if grep -q "Auth URL:" proxy_output.log && grep -q "APIKey:" proxy_output.log; then break; fi
@@ -192,18 +192,31 @@ jobs:
                 await delay(2000);
               }
 
-              console.log("⌨️ Typing credentials...");
+              console.log("⌨️ Typing email...");
               await page.waitForSelector('#login-username', { visible: true, timeout: 20000 });
               await typeWithRandomDelay(page, '#login-username', process.env.SPOTIFY_USERNAME);
+              await delay(1000);
 
-              const passwordExists = await page.waitForSelector('#login-password', { visible: true, timeout: 20000 }).catch(() => null);
-              if (!passwordExists) throw new Error('❌ Password input field not found.');
+              console.log("🔁 Clicking Continue...");
+              await page.click('button[data-testid="login-button"]');
+              await delay(4000);
 
+              console.log("🔓 Clicking 'Log in with a password'...");
+              const passwordFallback = await page.$x("//span[contains(text(), 'Log in with a password')]");
+              if (passwordFallback.length > 0) {
+                await passwordFallback[0].click();
+                await delay(3000);
+              } else {
+                throw new Error("❌ 'Log in with a password' option not found");
+              }
+
+              console.log("🔐 Typing password...");
+              await page.waitForSelector('#login-password', { visible: true, timeout: 20000 });
               await typeWithRandomDelay(page, '#login-password', process.env.SPOTIFY_PASSWORD);
               await delay(1500);
 
               await page.click('#login-button');
-              await delay(5000);
+              await delay(6000);
 
               const authAccept = await page.$('#auth-accept');
               if (authAccept) {
@@ -245,4 +258,3 @@ jobs:
           path: |
             spotify_error.png
             error_debug.html
-
