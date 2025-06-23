@@ -147,34 +147,26 @@ jobs:
       - name: Install Puppeteer
         run: npm install puppeteer
 
-      - name: Perform Spotify login and authorization
+           - name: Perform Spotify login and authorization
         env:
           SPOTIFY_USERNAME: ${{ secrets.SPOTIFY_USERNAME }}
           SPOTIFY_PASSWORD: ${{ secrets.SPOTIFY_PASSWORD }}
         run: |
           node - <<'EOF'
           const puppeteer = require('puppeteer');
-
-          function getRandomDelay(min, max) {
-            return Math.floor(Math.random() * (max - min + 1) + min);
-          }
+          const fs = require('fs');
 
           function delay(ms) {
             return new Promise(resolve => setTimeout(resolve, ms));
           }
 
+          function getRandomDelay(min, max) {
+            return Math.floor(Math.random() * (max - min + 1) + min);
+          }
+
           async function typeWithRandomDelay(page, selector, text) {
             for (const char of text) {
               await page.type(selector, char, { delay: getRandomDelay(50, 150) });
-            }
-          }
-
-          async function waitForSelectorWithTimeout(page, selector, timeout) {
-            try {
-              await page.waitForSelector(selector, { visible: true, timeout });
-              return true;
-            } catch (error) {
-              return false;
             }
           }
 
@@ -189,43 +181,50 @@ jobs:
             await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Safari/537.36');
 
             try {
-              console.log("➡️ Opening Auth URL...");
-              await page.goto(process.env.AUTH_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-              await delay(3000);
+              console.log("➡️ Opening Spotify Auth URL...");
+              await page.goto(process.env.AUTH_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+              await delay(5000);
 
-              const cookieAccept = await page.$('#onetrust-accept-btn-handler');
-              if (cookieAccept) {
-                console.log("🍪 Accepting cookies...");
-                await cookieAccept.click();
+              const cookieBtn = await page.$('#onetrust-accept-btn-handler');
+              if (cookieBtn) {
+                console.log("🍪 Clicking cookie accept...");
+                await cookieBtn.click();
                 await delay(2000);
               }
 
-              console.log("⌨️ Typing login credentials...");
-              await page.waitForSelector('#login-username', { timeout: 15000 });
+              console.log("⌨️ Typing credentials...");
+              await page.waitForSelector('#login-username', { visible: true, timeout: 20000 });
               await typeWithRandomDelay(page, '#login-username', process.env.SPOTIFY_USERNAME);
-              await delay(getRandomDelay(500, 1000));
-              await page.waitForSelector('#login-password', { timeout: 15000 });
+
+              const passwordExists = await page.waitForSelector('#login-password', { visible: true, timeout: 20000 }).catch(() => null);
+              if (!passwordExists) throw new Error('❌ Password input field not found.');
+
               await typeWithRandomDelay(page, '#login-password', process.env.SPOTIFY_PASSWORD);
-              await delay(getRandomDelay(1000, 2000));
+              await delay(1500);
+
               await page.click('#login-button');
-              await delay(3000);
+              await delay(5000);
 
-              const authAccept = await waitForSelectorWithTimeout(page, '#auth-accept', 20000);
+              const authAccept = await page.$('#auth-accept');
               if (authAccept) {
-                console.log("🔐 Accepting Spotify auth permissions...");
-                await page.click('#auth-accept');
-                await page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 30000 });
+                console.log("✅ Accepting Spotify authorization...");
+                await authAccept.click();
+                await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 30000 });
               }
 
-              const pageContent = await page.content();
-              if (pageContent.includes('Authorization successful') || page.url().includes('callback?code=')) {
-                console.log('✅ Spotify authorization successful');
+              const currentURL = page.url();
+              const content = await page.content();
+
+              if (content.includes('Authorization successful') || currentURL.includes('callback?code=')) {
+                console.log('🎉 Spotify authorization successful');
               } else {
-                throw new Error('❌ Spotify authorization failed.');
+                throw new Error('❌ Spotify login or authorization failed.');
               }
 
-            } catch (err) {
-              console.error("💥 Error during Spotify login:", err);
+            } catch (error) {
+              console.error('💥 Error during Spotify login:', error.message);
+              await page.screenshot({ path: 'spotify_error.png', fullPage: true });
+              fs.writeFileSync('error_debug.html', await page.content());
               process.exit(1);
             } finally {
               await browser.close();
