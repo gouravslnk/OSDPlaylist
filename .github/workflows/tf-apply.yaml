@@ -236,3 +236,13 @@ jobs:
         run: |
           terraform init
           terraform apply -var="SPOTIFY_API_KEY=${{ env.SPOTIFY_API_KEY }}" -auto-approve
+
+      - name: Upload debug files (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: spotify-debug
+          path: |
+            spotify_error.png
+            error_debug.html
+
