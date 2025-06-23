@@ -93,6 +93,9 @@
 #         run: |
 #           terraform init
 #           terraform apply -var="SPOTIFY_API_KEY=${{ env.SPOTIFY_API_KEY }}" -auto-approve
+
+
+
 name: Update playlist with Spotify Auth
 
 on:
@@ -258,11 +261,20 @@ jobs:
               await delay(22000);
 
               // Submit
-              console.log("🚀 Submitting login...");
-              const loginClicked = await clickByText(page, 'log in') || 
-                                  await safeClick(page, '#login-button');
+                console.log("🚀 Submitting login...");
+                let loginClicked = false;
+                try {
+                  loginClicked = await clickByText(page, 'log in') ||
+                 await safeClick(page, 'button[type="submit"]') ||
+                 await safeClick(page, '[data-testid="login-button"]') ||
+                 await safeClick(page, '#login-button');
+              } catch (e) {
+                console.log("⚠️ Fallback: Login button not clicked using known selectors");
+          }
+
               if (!loginClicked) throw new Error("Login button not found");
-              await delay(5000);
+                await delay(5000);
+
 
               // Optional Stay Logged In
               try {
