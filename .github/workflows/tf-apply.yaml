@@ -147,7 +147,7 @@ jobs:
       - name: Install Puppeteer
         run: npm install puppeteer
 
-           - name: Perform Spotify login and authorization
+      - name: Perform Spotify login and authorization
         env:
           SPOTIFY_USERNAME: ${{ secrets.SPOTIFY_USERNAME }}
           SPOTIFY_PASSWORD: ${{ secrets.SPOTIFY_PASSWORD }}
