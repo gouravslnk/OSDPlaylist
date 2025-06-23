@@ -73,6 +73,7 @@ resource "spotify_playlist" "playlist" {
     data.spotify_track.Zenith.id,
     data.spotify_track.A_View_To_Kill.id,
     data.spotify_track.Veridis_Quo.id,
+    // added tracks
     data.spotify_track.instant_crush.id,
     data.spotify_track.nightcall.id,
     data.spotify_track.lady_hear_me_tonight.id,
