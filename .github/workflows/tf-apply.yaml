@@ -199,22 +199,31 @@ jobs:
 
               console.log("🔁 Clicking Continue...");
               await page.click('button[data-testid="login-button"]');
-              await delay(4000);
+              await delay(5000);
 
               console.log("🔓 Clicking 'Log in with a password'...");
-              const passwordFallback = await page.$x("//span[contains(text(), 'Log in with a password')]");
-              if (passwordFallback.length > 0) {
-                await passwordFallback[0].click();
-                await delay(3000);
-              } else {
-                throw new Error("❌ 'Log in with a password' option not found");
+              const loginWithPasswordClicked = await page.evaluate(() => {
+                const allSpans = Array.from(document.querySelectorAll('span'));
+                const passwordSpan = allSpans.find(span => span.innerText?.toLowerCase().includes('log in with a password'));
+                if (passwordSpan) {
+                  passwordSpan.click();
+                  return true;
+                }
+                return false;
+              });
+
+              if (!loginWithPasswordClicked) {
+                throw new Error("❌ 'Log in with a password' link not found");
               }
+
+              await delay(4000);
 
               console.log("🔐 Typing password...");
               await page.waitForSelector('#login-password', { visible: true, timeout: 20000 });
               await typeWithRandomDelay(page, '#login-password', process.env.SPOTIFY_PASSWORD);
               await delay(1500);
 
+              console.log("🚀 Submitting login...");
               await page.click('#login-button');
               await delay(6000);
 
@@ -244,6 +253,7 @@ jobs:
             }
           })();
           EOF
+
 
       - name: Run Terraform Apply
         run: |
