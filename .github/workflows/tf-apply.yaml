@@ -8,8 +8,8 @@ on:
 jobs:
   spotify-auth-and-apply:
     runs-on: ubuntu-latest
-    name: Apply
-    timeout-minutes: 10
+    name: Authenticate and Apply
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -20,7 +20,7 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Install patched spotify_auth_proxy
+      - name: Install patched spotify_auth_proxy from fork
         run: |
           echo "$HOME/go/bin" >> $GITHUB_PATH
           git clone -b fix/base-url-127 https://github.com/gauravslnk/terraform-provider-spotify
@@ -31,11 +31,12 @@ jobs:
             exit 1
           fi
 
-      - name: Run auth proxy
+      - name: Run spotify_auth_proxy
         env:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           SPOTIFY_REDIRECT_URI: ${{ secrets.SPOTIFY_REDIRECT_URI }}
+          SPOTIFY_PROXY_BASE_URI: http://127.0.0.1:8080
         run: |
           spotify_auth_proxy --port 8080 > proxy.log 2>&1 &
           echo "Waiting for auth URL..."
@@ -58,11 +59,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install dependencies
+      - name: Install Node dependencies
         run: npm install puppeteer@22.8.2 fs-extra@11
 
       - name: Perform Spotify login and authorization
         env:
+          AUTH_URL: ${{ env.AUTH_URL }}
           SPOTIFY_USERNAME: ${{ secrets.SPOTIFY_USERNAME }}
           SPOTIFY_PASSWORD: ${{ secrets.SPOTIFY_PASSWORD }}
         run: |
@@ -77,12 +79,12 @@ jobs:
               if (Math.random() > 0.8) await delay(randomDelay(50, 150));
             }
           }
-          async function clickByText(page, text, elementType = 'button') {
-            const elements = await page.$$(elementType);
-            for (const element of elements) {
-              const elementText = await page.evaluate(el => el.textContent?.trim(), element);
-              if (elementText?.toLowerCase() === text.toLowerCase()) {
-                await element.click();
+          async function clickByText(page, text, tag = '*') {
+            const elements = await page.$$(tag);
+            for (const el of elements) {
+              const content = await page.evaluate(el => el.textContent?.trim(), el);
+              if (content?.toLowerCase() === text.toLowerCase()) {
+                await el.click();
                 return true;
               }
             }
@@ -100,6 +102,7 @@ jobs:
             } catch {}
             return false;
           }
+
           (async () => {
             const browser = await puppeteer.launch({
               headless: true,
@@ -108,74 +111,86 @@ jobs:
             });
             const page = await browser.newPage();
             await page.setUserAgent('Mozilla/5.0');
+
             try {
               console.log("🌐 Navigating to Spotify Auth URL...");
               await page.goto(process.env.AUTH_URL, { waitUntil: 'networkidle2', timeout: 60000 });
               console.log("📍 Current page:", page.url());
-              await delay(3000);
+
               if (page.url().includes('accounts.google.com')) {
                 throw new Error("❌ Redirected to Google login instead of Spotify login.");
               }
+
               console.log("📧 Entering email...");
               await page.waitForSelector('input[type="email"], #login-username', { visible: true, timeout: 15000 });
               await typeWithHumanDelay(page, 'input[type="email"], #login-username', process.env.SPOTIFY_USERNAME);
               await delay(1000);
+
               console.log("➡️ Clicking Continue...");
-              const continueClicked = await clickByText(page, 'Continue') ||
-                                     await safeClick(page, 'button[data-testid="login-button"]') ||
-                                     await safeClick(page, 'button[type="submit"]');
-              if (!continueClicked) throw new Error("❌ Continue button not found.");
-              await delay(4000);
+              const continued = await clickByText(page, 'Continue') ||
+                                await safeClick(page, 'button[data-testid="login-button"]') ||
+                                await safeClick(page, 'button[type="submit"]');
+              if (!continued) throw new Error("❌ Continue button not found.");
+
+              await delay(3000);
+
               const otpDetected = await page.evaluate(() =>
                 Array.from(document.querySelectorAll('*')).some(el =>
                   el.textContent?.toLowerCase().includes('6-digit code')
                 )
               );
+
               if (otpDetected) {
-                console.log("🔁 Clicking 'Log in with a password'...");
+                console.log("🔁 Switching to password login...");
                 const clicked = await clickByText(page, 'Log in with a password') ||
                                 await safeClick(page, 'button[data-encore-id="buttonTertiary"]');
-                if (!clicked) throw new Error("❌ Could not find 'Log in with a password' option.");
+                if (!clicked) throw new Error("❌ Could not find 'Log in with a password'.");
                 await delay(3000);
               }
+
               console.log("🔑 Entering password...");
               await page.waitForSelector('input[type="password"]', { visible: true, timeout: 10000 });
               await typeWithHumanDelay(page, 'input[type="password"]', process.env.SPOTIFY_PASSWORD);
-              await delay(1500);
-              console.log("🚀 Submitting login...");
-              const loginClicked = await safeClick(page, '#login-button') ||
-                                   await safeClick(page, 'button[data-testid="login-button"]') ||
-                                   await safeClick(page, 'button[data-encore-id="buttonPrimary"]') ||
-                                   await clickByText(page, 'Log In');
-              if (!loginClicked) throw new Error("❌ Login button not found.");
+              await delay(1000);
+
+              console.log("🚀 Logging in...");
+              const loggedIn = await safeClick(page, '#login-button') ||
+                               await safeClick(page, 'button[data-testid="login-button"]') ||
+                               await safeClick(page, 'button[data-encore-id="buttonPrimary"]') ||
+                               await clickByText(page, 'Log In');
+              if (!loggedIn) throw new Error("❌ Login button not found.");
+
               await delay(5000);
-              const authClicked = await safeClick(page, '#auth-accept') || await clickByText(page, 'Agree');
-              if (authClicked) {
-                console.log("✅ Authorization accepted.");
+
+              const authorized = await safeClick(page, '#auth-accept') || await clickByText(page, 'Agree');
+              if (authorized) {
+                console.log("✅ Accepted authorization.");
                 await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 });
               }
+
               const finalURL = page.url();
               if (!finalURL.includes('callback?code=')) {
                 throw new Error(`❌ Authorization failed. Final URL: ${finalURL}`);
               }
+
               console.log("🎉 Spotify authorization successful!");
             } catch (error) {
-              console.error('💥 Error during Spotify login:', error.message);
+              console.error("💥 Error during login:", error.message);
               await page.screenshot({ path: 'spotify_error.png', fullPage: true });
               await fs.writeFile('error_debug.html', await page.content());
-              throw error;
+              process.exit(1);
             } finally {
               await browser.close();
             }
           })();
           EOF
 
-      - name: Run Terraform Apply
+      - name: Run Terraform
         run: |
           terraform init
           terraform apply -var="SPOTIFY_API_KEY=${{ env.SPOTIFY_API_KEY }}" -auto-approve
 
-      - name: Upload debug files (on failure)
+      - name: Upload debug artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
