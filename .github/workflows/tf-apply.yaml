@@ -1,15 +1,14 @@
-name: Update playlist with Spotify Auth
+name: Spotify Playlist Updater
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
 
 jobs:
-  spotify-auth-and-apply:
+  spotify-auth-and-update:
     runs-on: ubuntu-latest
-    name: Apply
-    timeout-minutes: 10
+    name: Authenticate and Update
+    timeout-minutes: 15
 
     steps:
       - name: Checkout repository
@@ -18,181 +17,220 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.18.0'
+          go-version: '1.21'
 
       - name: Install spotify_auth_proxy
         run: go install github.com/conradludgate/terraform-provider-spotify/spotify_auth_proxy@latest
 
-      - name: Run spotify_auth_proxy and capture Auth URL
+      - name: Run auth proxy
         env:
           SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
-          SPOTIFY_CLIENT_REDIRECT_URI: ${{ secrets.SPOTIFY_CLIENT_REDIRECT_URI }}
+          SPOTIFY_REDIRECT_URI: ${{ secrets.SPOTIFY_REDIRECT_URI }}
         run: |
-          spotify_auth_proxy --port 8080 --redirect_uri http://127.0.0.1:8080/callback > proxy_output.log 2>&1 &
-          PROXY_PID=$!
-          echo "Waiting for Auth URL and API Key..."
+          spotify_auth_proxy --port 8080 > proxy.log 2>&1 &
+          echo "Waiting for auth URL..."
           for i in {1..30}; do
-            if grep -q "Auth URL:" proxy_output.log && grep -q "APIKey:" proxy_output.log; then break; fi
+            if grep -q "Auth URL:" proxy.log; then break; fi
             sleep 1
           done
-          if ! (grep -q "Auth URL:" proxy_output.log && grep -q "APIKey:" proxy_output.log); then
-            echo "❌ Failed to get Auth URL or API Key"; cat proxy_output.log; exit 1
-          fi
-          auth_url=$(grep "Auth URL:" proxy_output.log | awk '{print $3}')
-          api_key=$(grep "APIKey:" proxy_output.log | awk '{print $2}')
+          auth_url=$(grep "Auth URL:" proxy.log | awk '{print $3}')
+          api_key=$(grep "APIKey:" proxy.log | awk '{print $2}')
           echo "AUTH_URL=$auth_url" >> $GITHUB_ENV
           echo "SPOTIFY_API_KEY=$api_key" >> $GITHUB_ENV
+          if [ -z "$auth_url" ] || [ -z "$api_key" ]; then
+            echo "::error::Failed to get auth credentials"
+            cat proxy.log
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '20'
 
-      - name: Install Puppeteer and fs-extra
-        run: npm install puppeteer fs-extra
+      - name: Install dependencies
+        run: npm install puppeteer@21 fs-extra@11
 
-      - name: Perform Spotify login and authorization
+      - name: Perform Spotify authentication
         env:
           SPOTIFY_USERNAME: ${{ secrets.SPOTIFY_USERNAME }}
           SPOTIFY_PASSWORD: ${{ secrets.SPOTIFY_PASSWORD }}
-          AUTH_URL: ${{ env.AUTH_URL }}
         run: |
           node - <<'EOF'
           const puppeteer = require('puppeteer');
           const fs = require('fs-extra');
 
-          const delay = ms => new Promise(res => setTimeout(res, ms));
-          const randomDelay = (min, max) => Math.floor(Math.random() * (max - min + 1) + min);
+          // Configuration
+          const MAX_RETRIES = 3;
+          const TIMEOUT = 30000;
+          const DEBUG = true;
 
-          async function typeWithHumanDelay(page, selector, text) {
-            for (const char of text) {
-              await page.type(selector, char, { delay: randomDelay(30, 100) });
-              if (Math.random() > 0.8) await delay(randomDelay(50, 150));
-            }
-          }
+          // Utilities
+          const delay = ms => new Promise(r => setTimeout(r, ms));
+          const randomDelay = () => Math.floor(Math.random() * 500) + 500;
+          const debugLog = (...args) => DEBUG && console.log('[DEBUG]', ...args);
 
-          async function clickByText(page, text, elementType = 'button') {
-            const elements = await page.$$(elementType);
-            for (const element of elements) {
-              const elementText = await page.evaluate(el => el.textContent?.trim(), element);
-              if (elementText?.toLowerCase() === text.toLowerCase()) {
-                await element.click();
-                return true;
-              }
-            }
-            return false;
+          async function handleErrors(page, error) {
+            console.error('❌ Error:', error.message);
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            await page.screenshot({ path: `error-${timestamp}.png`, fullPage: true });
+            await fs.writeFile(`error-${timestamp}.html`, await page.content());
+            throw error;
           }
 
           async function safeClick(page, selector, timeout = 10000) {
             try {
+              debugLog(`Looking for: ${selector}`);
               await page.waitForSelector(selector, { visible: true, timeout });
-              await delay(500);
-              const element = await page.$(selector);
-              if (element) {
+              await delay(randomDelay());
+              await page.click(selector);
+              return true;
+            } catch (e) {
+              debugLog(`Click failed for ${selector}: ${e.message}`);
+              return false;
+            }
+          }
+
+          async function clickByText(page, text, tag = '*') {
+            const elements = await page.$$(tag);
+            for (const element of elements) {
+              const elementText = await page.evaluate(el => el.textContent?.trim(), element);
+              if (elementText?.toLowerCase().includes(text.toLowerCase())) {
+                await delay(randomDelay());
                 await element.click();
                 return true;
               }
-            } catch {}
+            }
             return false;
           }
 
-          (async () => {
+          async function typeWithDelay(page, selector, text) {
+            await page.focus(selector);
+            await delay(randomDelay());
+            for (const char of text) {
+              await page.keyboard.type(char, { delay: Math.random() * 50 + 50 });
+              if (Math.random() > 0.9) await delay(randomDelay());
+            }
+          }
+
+          async function run() {
             const browser = await puppeteer.launch({
-              headless: true,
+              headless: 'new',
               args: ['--no-sandbox', '--disable-setuid-sandbox'],
               defaultViewport: { width: 1280, height: 800 }
             });
 
             const page = await browser.newPage();
-            await page.setUserAgent('Mozilla/5.0');
+            page.setDefaultTimeout(TIMEOUT);
 
             try {
-              console.log("🌐 Navigating to Spotify Auth URL...");
-              await page.goto(process.env.AUTH_URL, { waitUntil: 'networkidle2', timeout: 60000 });
-              await delay(3000);
+              // Step 1: Initial navigation
+              console.log('🌐 Navigating to Spotify auth page...');
+              await page.goto(process.env.AUTH_URL, { waitUntil: 'networkidle2' });
 
-              // Check if redirected to Google login by mistake
-              const url = page.url();
-              if (url.includes('accounts.google.com')) {
-                throw new Error("❌ Redirected to Google login instead of Spotify login page.");
+              // Check if already authorized
+              if (page.url().includes('callback?code=')) {
+                console.log('✅ Already authenticated');
+                return;
               }
 
-              console.log("📧 Entering email...");
-              await page.waitForSelector('input[type="email"], #login-username', { visible: true, timeout: 15000 });
-              await typeWithHumanDelay(page, 'input[type="email"], #login-username', process.env.SPOTIFY_USERNAME);
-              await delay(1000);
+              // Step 2: Handle cookies
+              if (await safeClick(page, '#onetrust-accept-btn-handler') || 
+                  await clickByText(page, 'accept cookies')) {
+                console.log('🍪 Accepted cookies');
+                await delay(2000);
+              }
 
-              console.log("➡️ Clicking Continue...");
-              const continueClicked = await clickByText(page, 'Continue') ||
-                                     await safeClick(page, 'button[data-testid="login-button"]') ||
-                                     await safeClick(page, 'button[type="submit"]');
-              if (!continueClicked) throw new Error("❌ Continue button not found.");
-              await delay(4000);
+              // Step 3: Email entry
+              console.log('📧 Entering email...');
+              await typeWithDelay(page, 'input[type="email"], #login-username', process.env.SPOTIFY_USERNAME);
+              
+              if (!(await safeClick(page, 'button[data-testid="login-button"]') ||
+                    await clickByText(page, 'continue'))) {
+                throw new Error('Continue button not found');
+              }
+              await delay(3000);
 
-              console.log("🔍 Checking for OTP screen...");
-              const otpDetected = await page.evaluate(() =>
-                Array.from(document.querySelectorAll('*')).some(el =>
-                  el.textContent?.toLowerCase().includes('6-digit code')
-                )
+              // Step 4: Handle OTP/password choice
+              const needsPassword = await page.evaluate(() => 
+                Array.from(document.querySelectorAll('*'))
+                  .some(el => el.textContent?.includes('6-digit code'))
               );
 
-              if (otpDetected) {
-                console.log("🔁 Clicking 'Log in with a password'...");
-                const clicked = await clickByText(page, 'Log in with a password') ||
-                                await safeClick(page, 'button[data-encore-id="buttonTertiary"]');
-                if (!clicked) throw new Error("❌ Could not find 'Log in with a password' option.");
+              if (needsPassword) {
+                console.log('🔄 Switching to password login...');
+                if (!(await clickByText(page, 'log in with a password') ||
+                      await safeClick(page, 'button[data-encore-id="buttonTertiary"]'))) {
+                  throw new Error('Password login option not found');
+                }
                 await delay(3000);
               }
 
-              console.log("🔑 Entering password...");
-              await page.waitForSelector('input[type="password"]', { visible: true, timeout: 10000 });
-              await typeWithHumanDelay(page, 'input[type="password"]', process.env.SPOTIFY_PASSWORD);
-              await delay(1500);
-
-              console.log("🚀 Submitting login...");
-              const loginClicked = await safeClick(page, '#login-button') ||
-                                   await safeClick(page, 'button[data-testid="login-button"]') ||
-                                   await safeClick(page, 'button[data-encore-id="buttonPrimary"]') ||
-                                   await clickByText(page, 'Log In');
-              if (!loginClicked) throw new Error("❌ Login button not found.");
+              // Step 5: Password entry
+              console.log('🔑 Entering password...');
+              await typeWithDelay(page, 'input[type="password"], #login-password', process.env.SPOTIFY_PASSWORD);
+              
+              if (!(await safeClick(page, 'button[data-testid="login-button"]') ||
+                    await clickByText(page, 'log in'))) {
+                throw new Error('Login button not found');
+              }
               await delay(5000);
 
-              console.log("🔄 Checking for authorization screen...");
-              const authClicked = await safeClick(page, '#auth-accept') || await clickByText(page, 'Agree');
-              if (authClicked) {
-                console.log("✅ Authorization accepted.");
-                await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 });
+              // Step 6: Handle authorization
+              let attempts = 0;
+              while (attempts < MAX_RETRIES && !page.url().includes('callback?code=')) {
+                attempts++;
+                console.log(`🔄 Authorization attempt ${attempts}/${MAX_RETRIES}`);
+                
+                if (await safeClick(page, '#auth-accept') ||
+                    await clickByText(page, 'agree')) {
+                  console.log('✅ Clicked authorization button');
+                  await delay(3000);
+                }
+                
+                // Check for errors
+                const error = await page.evaluate(() => {
+                  const errorEl = document.querySelector('[role="alert"], .error');
+                  return errorEl?.textContent?.trim();
+                });
+                
+                if (error) throw new Error(`Spotify error: ${error}`);
+                
+                await delay(2000);
               }
 
-              const finalURL = page.url();
-              if (!finalURL.includes('callback?code=')) {
-                throw new Error(`❌ Authorization failed. Final URL: ${finalURL}`);
+              // Final verification
+              if (!page.url().includes('callback?code=')) {
+                throw new Error(`Authorization failed after ${MAX_RETRIES} attempts`);
               }
 
-              console.log("🎉 Spotify authorization successful!");
+              console.log('🎉 Successfully authenticated with Spotify!');
 
             } catch (error) {
-              console.error('💥 Error during Spotify login:', error.message);
-              await page.screenshot({ path: 'spotify_error.png', fullPage: true });
-              await fs.writeFile('error_debug.html', await page.content());
-              throw error;
+              await handleErrors(page, error);
             } finally {
               await browser.close();
             }
-          })();
+          }
+
+          run().catch(e => {
+            console.error('Unhandled error:', e);
+            process.exit(1);
+          });
           EOF
 
-      - name: Run Terraform Apply
+      - name: Run Terraform
         run: |
           terraform init
-          terraform apply -var="SPOTIFY_API_KEY=${{ env.SPOTIFY_API_KEY }}" -auto-approve
+          terraform apply -var="spotify_api_key=${{ env.SPOTIFY_API_KEY }}" -auto-approve
 
-      - name: Upload debug files (on failure)
+      - name: Upload debug artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: spotify-debug
+          name: auth-debug
           path: |
-            spotify_error.png
-            error_debug.html
+            error-*.png
+            error-*.html
+            proxy.log
