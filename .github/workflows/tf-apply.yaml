@@ -185,10 +185,10 @@ jobs:
           })();
           EOF
 
-      - name: Run Terraform
-        run: |
-          terraform init
-          terraform apply -var="SPOTIFY_API_KEY=${{ env.SPOTIFY_API_KEY }}" -auto-approve
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.12.2
 
       - name: Upload debug artifacts
         if: failure()
