@@ -49,9 +49,8 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install Puppeteer and dependencies
-        run: |
-          npm install puppeteer fs-extra
+      - name: Install Puppeteer and fs-extra
+        run: npm install puppeteer fs-extra
 
       - name: Perform Spotify login and authorization
         env:
@@ -67,16 +66,16 @@ jobs:
 
           async function typeWithHumanDelay(page, selector, text) {
             for (const char of text) {
-              await page.type(selector, char, { delay: randomDelay(30, 120) });
-              if (Math.random() > 0.7) await delay(randomDelay(50, 200));
+              await page.type(selector, char, { delay: randomDelay(30, 100) });
+              if (Math.random() > 0.8) await delay(randomDelay(50, 150));
             }
           }
 
           async function clickByText(page, text, elementType = 'button') {
             const elements = await page.$$(elementType);
             for (const element of elements) {
-              const content = await page.evaluate(el => el.textContent?.trim(), element);
-              if (content?.toLowerCase().includes(text.toLowerCase())) {
+              const elementText = await page.evaluate(el => el.textContent?.trim(), element);
+              if (elementText?.toLowerCase() === text.toLowerCase()) {
                 await element.click();
                 return true;
               }
@@ -93,7 +92,7 @@ jobs:
                 await element.click();
                 return true;
               }
-            } catch (e) {}
+            } catch {}
             return false;
           }
 
@@ -112,11 +111,11 @@ jobs:
               await page.goto(process.env.AUTH_URL, { waitUntil: 'networkidle2', timeout: 60000 });
               await delay(3000);
 
-              try {
-                const cookieAccepted = await clickByText(page, 'accept') ||
-                                       await safeClick(page, '#onetrust-accept-btn-handler');
-                if (cookieAccepted) console.log("🍪 Accepted cookies");
-              } catch { console.log("ℹ️ No cookie banner found"); }
+              // Check if redirected to Google login by mistake
+              const url = page.url();
+              if (url.includes('accounts.google.com')) {
+                throw new Error("❌ Redirected to Google login instead of Spotify login page.");
+              }
 
               console.log("📧 Entering email...");
               await page.waitForSelector('input[type="email"], #login-username', { visible: true, timeout: 15000 });
@@ -124,75 +123,53 @@ jobs:
               await delay(1000);
 
               console.log("➡️ Clicking Continue...");
-              const continueClicked = await clickByText(page, 'continue') ||
-                                     await safeClick(page, 'button[data-testid="login-button"]');
-              if (!continueClicked) throw new Error("Continue button not found");
+              const continueClicked = await clickByText(page, 'Continue') ||
+                                     await safeClick(page, 'button[data-testid="login-button"]') ||
+                                     await safeClick(page, 'button[type="submit"]');
+              if (!continueClicked) throw new Error("❌ Continue button not found.");
               await delay(4000);
 
-              console.log("🔍 Checking for OTP/password choice...");
-              const otpScreenExists = await page.evaluate(() => {
-                return Array.from(document.querySelectorAll('*')).some(el =>
-                  el.textContent?.toLowerCase().includes('6-digit code'));
-              });
+              console.log("🔍 Checking for OTP screen...");
+              const otpDetected = await page.evaluate(() =>
+                Array.from(document.querySelectorAll('*')).some(el =>
+                  el.textContent?.toLowerCase().includes('6-digit code')
+                )
+              );
 
-              if (otpScreenExists) {
-                console.log("🔢 Found OTP screen, switching to password login...");
-                const passwordOptionClicked = await clickByText(page, 'Log in with a password') ||
-                                               await safeClick(page, 'button[data-encore-id="buttonTertiary"]');
-                if (!passwordOptionClicked) throw new Error("Password login option not found");
-                await page.waitForSelector('input[type="password"], #login-password', { visible: true, timeout: 15000 });
+              if (otpDetected) {
+                console.log("🔁 Clicking 'Log in with a password'...");
+                const clicked = await clickByText(page, 'Log in with a password') ||
+                                await safeClick(page, 'button[data-encore-id="buttonTertiary"]');
+                if (!clicked) throw new Error("❌ Could not find 'Log in with a password' option.");
                 await delay(3000);
               }
 
               console.log("🔑 Entering password...");
-              await typeWithHumanDelay(page, 'input[type="password"], #login-password', process.env.SPOTIFY_PASSWORD);
-              await delay(2000);
+              await page.waitForSelector('input[type="password"]', { visible: true, timeout: 10000 });
+              await typeWithHumanDelay(page, 'input[type="password"]', process.env.SPOTIFY_PASSWORD);
+              await delay(1500);
 
               console.log("🚀 Submitting login...");
-              let loginClicked = false;
-              try {
-                loginClicked = await safeClick(page, '#login-button') ||
-               await safeClick(page, 'button[data-testid="login-button"]') ||
-               await safeClick(page, 'button[data-encore-id="buttonPrimary"]') ||
-               await safeClick(page, 'button[type="submit"]') ||
-               await clickByText(page, 'Log In') ||
-               await clickByText(page, 'log in');
-
-              console.log("🌐 Current page URL:", page.url());
-              const buttons = await page.$$eval('button', btns => btns.map(b => b.textContent?.trim()));
-              console.log("🔍 Buttons detected:", buttons);
-
-                if (!loginClicked) {
-                  const allBtns = await page.$$eval('button', btns => btns.map(b => b.textContent?.trim()));
-                  console.log("🔍 Available buttons:", allBtns);
-                }
-              } catch { console.log("⚠️ Fallback: Login button not found in known selectors"); }
-
-              if (!loginClicked) throw new Error("Login button not found");
+              const loginClicked = await safeClick(page, '#login-button') ||
+                                   await safeClick(page, 'button[data-testid="login-button"]') ||
+                                   await safeClick(page, 'button[data-encore-id="buttonPrimary"]') ||
+                                   await clickByText(page, 'Log In');
+              if (!loginClicked) throw new Error("❌ Login button not found.");
               await delay(5000);
 
-              try {
-                const stayLoggedIn = await clickByText(page, 'stay logged in') ||
-                                     await safeClick(page, '[data-testid="auth-accept"]');
-                if (stayLoggedIn) console.log("🔘 Clicked 'Stay Logged In'");
-              } catch {}
-
               console.log("🔄 Checking for authorization screen...");
-              try {
-                const authAccepted = await clickByText(page, 'agree') ||
-                                     await safeClick(page, '#auth-accept');
-                if (authAccepted) {
-                  console.log("✅ Clicked 'Agree'");
-                  await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 });
-                }
-              } catch {}
-
-              const currentURL = page.url();
-              if (currentURL.includes('callback?code=')) {
-                console.log('🎉 Spotify authorization successful!');
-              } else {
-                throw new Error(`Authorization failed. Current URL: ${currentURL}`);
+              const authClicked = await safeClick(page, '#auth-accept') || await clickByText(page, 'Agree');
+              if (authClicked) {
+                console.log("✅ Authorization accepted.");
+                await page.waitForNavigation({ waitUntil: 'networkidle0', timeout: 15000 });
               }
+
+              const finalURL = page.url();
+              if (!finalURL.includes('callback?code=')) {
+                throw new Error(`❌ Authorization failed. Final URL: ${finalURL}`);
+              }
+
+              console.log("🎉 Spotify authorization successful!");
 
             } catch (error) {
               console.error('💥 Error during Spotify login:', error.message);
