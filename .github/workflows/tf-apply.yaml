@@ -20,7 +20,7 @@ jobs:
           go-version: '1.21'
 
       - name: Install patched spotify_auth_proxy
-        run: go install github.com/gauravslnk/terraform-provider-spotify/tree/fix/base-url-127
+        run: go install github.com/gauravslnk/terraform-provider-spotify/tree/fix/base-url-127@latest
 
       - name: Run auth proxy
         env:
