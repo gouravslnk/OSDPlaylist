@@ -30,6 +30,7 @@ data "spotify_search_track" "Parcels" {
   limit = 7
 }
 
+
 data "spotify_track" "Zenith" {
   url = "https://open.spotify.com/track/0qKX14YZHptDWiEN0CgxGz?si=174ddb3f25414e2c"
 }
