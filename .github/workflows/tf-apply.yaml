@@ -20,7 +20,23 @@ jobs:
           go-version: '1.21'
 
       - name: Install patched spotify_auth_proxy
-        run: go install github.com/gauravslnk/terraform-provider-spotify/tree/fix/base-url-127/spotify_auth_proxy@latest
+        run: |
+          # Clean GOPATH if needed
+          export GOPATH=$(go env GOPATH)
+          export PATH=$GOPATH/bin:$PATH
+
+          # Clone specific branch
+          git clone -b fix/base-url-127 https://github.com/gauravslnk/terraform-provider-spotify
+          cd terraform-provider-spotify/spotify_auth_proxy
+
+          # Build and install
+          go build -o $GOPATH/bin/spotify_auth_proxy .
+
+          # Verify installation
+          if ! command -v spotify_auth_proxy &> /dev/null; then
+            echo "::error::Installation failed"
+            exit 1
+          fi
 
       - name: Run auth proxy
         env:
