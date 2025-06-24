@@ -29,7 +29,7 @@ jobs:
           SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
           SPOTIFY_CLIENT_REDIRECT_URI: ${{ secrets.SPOTIFY_CLIENT_REDIRECT_URI }}
         run: |
-          spotify_auth_proxy > proxy_output.log 2>&1 &
+          spotify_auth_proxy --port 8080 --redirect_uri http://127.0.0.1:8080/callback > proxy_output.log 2>&1 &
           PROXY_PID=$!
           echo "Waiting for Auth URL and API Key..."
           for i in {1..30}; do
@@ -37,7 +37,7 @@ jobs:
             sleep 1
           done
           if ! (grep -q "Auth URL:" proxy_output.log && grep -q "APIKey:" proxy_output.log); then
-            echo "❌ Failed to get Auth URL or API Key"; cat proxy_output.log; exit 1
+          echo "❌ Failed to get Auth URL or API Key"; cat proxy_output.log; exit 1
           fi
           auth_url=$(grep "Auth URL:" proxy_output.log | awk '{print $3}')
           api_key=$(grep "APIKey:" proxy_output.log | awk '{print $2}')
