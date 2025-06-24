@@ -19,9 +19,11 @@ jobs:
         with:
           go-version: '1.21'
 
-      - name: Install patched spotify_auth_proxy (using commit hash)
+      - name: Install patched spotify_auth_proxy from fork (with GOPRIVATE)
+        env:
+          GOPRIVATE: github.com/conradludgate/terraform-provider-spotify
         run: |
-          go install github.com/gauravslnk/terraform-provider-spotify/spotify_auth_proxy@cd066e9e0c5f0d4df8da3ed58f8571eee3fce251
+          go install github.com/conradludgate/terraform-provider-spotify/spotify_auth_proxy@cd066e9e0c5f0d4df8da3ed58f8571eee3fce251
 
       - name: Run auth proxy
         env:
