@@ -50,7 +50,7 @@ jobs:
           node-version: '20'
 
       - name: Install dependencies
-        run: npm install puppeteer@21 fs-extra@11
+        run: npm install puppeteer@22.8.2 fs-extra@11
 
       - name: Perform Spotify authentication
         env:
@@ -62,50 +62,84 @@ jobs:
           const fs = require('fs-extra');
 
           // Configuration
-          const MAX_RETRIES = 3;
-          const TIMEOUT = 30000;
-          const DEBUG = true;
+          const config = {
+            maxRetries: 3,
+            timeout: 30000,
+            debug: true,
+            userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+          };
 
           // Utilities
           const delay = ms => new Promise(r => setTimeout(r, ms));
           const randomDelay = () => Math.floor(Math.random() * 500) + 500;
-          const debugLog = (...args) => DEBUG && console.log('[DEBUG]', ...args);
+          const debugLog = (...args) => config.debug && console.log('[DEBUG]', ...args);
 
-          async function handleErrors(page, error) {
-            console.error('❌ Error:', error.message);
-            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-            await page.screenshot({ path: `error-${timestamp}.png`, fullPage: true });
-            await fs.writeFile(`error-${timestamp}.html`, await page.content());
-            throw error;
-          }
-
-          async function safeClick(page, selector, timeout = 10000) {
-            try {
-              debugLog(`Looking for: ${selector}`);
-              await page.waitForSelector(selector, { visible: true, timeout });
-              await delay(randomDelay());
-              await page.click(selector);
-              return true;
-            } catch (e) {
-              debugLog(`Click failed for ${selector}: ${e.message}`);
-              return false;
+          class AuthError extends Error {
+            constructor(message, screenshotPath, htmlPath) {
+              super(message);
+              this.screenshotPath = screenshotPath;
+              this.htmlPath = htmlPath;
             }
           }
 
-          async function clickByText(page, text, tag = '*') {
-            const elements = await page.$$(tag);
-            for (const element of elements) {
-              const elementText = await page.evaluate(el => el.textContent?.trim(), element);
-              if (elementText?.toLowerCase().includes(text.toLowerCase())) {
+          async function saveDebugArtifacts(page, prefix) {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+            const screenshotPath = `${prefix}-${timestamp}.png`;
+            const htmlPath = `${prefix}-${timestamp}.html`;
+            
+            await page.screenshot({ path: screenshotPath, fullPage: true });
+            await fs.writeFile(htmlPath, await page.content());
+            
+            return { screenshotPath, htmlPath };
+          }
+
+          async function safeClick(page, selectors, timeout = 10000) {
+            const selectorList = Array.isArray(selectors) ? selectors : [selectors];
+            
+            for (const selector of selectorList) {
+              try {
+                debugLog(`Attempting to click: ${selector}`);
+                await page.waitForSelector(selector, { visible: true, timeout });
                 await delay(randomDelay());
-                await element.click();
+                await page.click(selector);
                 return true;
+              } catch (e) {
+                debugLog(`Click failed for ${selector}: ${e.message}`);
               }
             }
             return false;
           }
 
-          async function typeWithDelay(page, selector, text) {
+          async function clickByText(page, text, tag = '*', timeout = 5000) {
+            try {
+              await page.waitForFunction(
+                (text, tag) => {
+                  const elements = Array.from(document.querySelectorAll(tag));
+                  return elements.some(el => 
+                    el.textContent?.trim().toLowerCase().includes(text.toLowerCase())
+                  );
+                },
+                { timeout },
+                text,
+                tag
+              );
+              
+              const elements = await page.$$(tag);
+              for (const element of elements) {
+                const elementText = await page.evaluate(el => el.textContent?.trim(), element);
+                if (elementText?.toLowerCase().includes(text.toLowerCase())) {
+                  await delay(randomDelay());
+                  await element.click();
+                  return true;
+                }
+              }
+            } catch (e) {
+              debugLog(`Text click failed for "${text}": ${e.message}`);
+            }
+            return false;
+          }
+
+          async function typeWithHumanDelay(page, selector, text) {
             await page.focus(selector);
             await delay(randomDelay());
             for (const char of text) {
@@ -114,108 +148,127 @@ jobs:
             }
           }
 
+          async function handleSpotifyAuth(page) {
+            // Step 1: Initial navigation
+            console.log('🌐 Navigating to Spotify auth page...');
+            await page.goto(process.env.AUTH_URL, { waitUntil: 'networkidle2' });
+
+            // Check if already authorized
+            if (page.url().includes('callback?code=')) {
+              console.log('✅ Already authenticated');
+              return true;
+            }
+
+            // Step 2: Handle cookies
+            if (await safeClick(page, ['#onetrust-accept-btn-handler', '.ot-sdk-row button']) || 
+                await clickByText(page, 'accept cookies')) {
+              console.log('🍪 Accepted cookies');
+              await delay(2000);
+            }
+
+            // Step 3: Email entry
+            console.log('📧 Entering email...');
+            await typeWithHumanDelay(page, 'input[type="email"], #login-username', process.env.SPOTIFY_USERNAME);
+            
+            if (!(await safeClick(page, ['button[data-testid="login-button"]', 'button[type="submit"]']) ||
+                  await clickByText(page, 'continue'))) {
+              throw new AuthError('Continue button not found', ...await saveDebugArtifacts(page, 'continue-error'));
+            }
+            await delay(3000);
+
+            // Step 4: Handle OTP/password choice
+            const needsPassword = await page.evaluate(() => 
+              Array.from(document.querySelectorAll('*'))
+                .some(el => el.textContent?.includes('6-digit code'))
+            );
+
+            if (needsPassword) {
+              console.log('🔄 Switching to password login...');
+              if (!(await clickByText(page, 'log in with a password') ||
+                    await safeClick(page, ['button[data-encore-id="buttonTertiary"]', '.auth-footer button']))) {
+                throw new AuthError('Password login option not found', ...await saveDebugArtifacts(page, 'password-switch-error'));
+              }
+              await delay(3000);
+            }
+
+            // Step 5: Password entry
+            console.log('🔑 Entering password...');
+            await typeWithHumanDelay(page, 'input[type="password"], #login-password', process.env.SPOTIFY_PASSWORD);
+            
+            if (!(await safeClick(page, ['button[data-testid="login-button"]', '#login-button']) ||
+                  await clickByText(page, 'log in'))) {
+              throw new AuthError('Login button not found', ...await saveDebugArtifacts(page, 'login-error'));
+            }
+            await delay(5000);
+
+            // Step 6: Handle authorization
+            let attempts = 0;
+            while (attempts < config.maxRetries && !page.url().includes('callback?code=')) {
+              attempts++;
+              console.log(`🔄 Authorization attempt ${attempts}/${config.maxRetries}`);
+              
+              if (await safeClick(page, ['#auth-accept', 'button[data-testid="auth-accept"]']) ||
+                  await clickByText(page, 'agree')) {
+                console.log('✅ Clicked authorization button');
+                await delay(3000);
+              }
+              
+              // Check for errors
+              const error = await page.evaluate(() => {
+                const errorEl = document.querySelector('[role="alert"], .error, .error-message');
+                return errorEl?.textContent?.trim();
+              });
+              
+              if (error) {
+                throw new AuthError(`Spotify error: ${error}`, ...await saveDebugArtifacts(page, 'auth-error'));
+              }
+              
+              await delay(2000);
+            }
+
+            return page.url().includes('callback?code=');
+          }
+
           async function run() {
             const browser = await puppeteer.launch({
               headless: 'new',
-              args: ['--no-sandbox', '--disable-setuid-sandbox'],
+              args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu'
+              ],
               defaultViewport: { width: 1280, height: 800 }
             });
 
             const page = await browser.newPage();
-            page.setDefaultTimeout(TIMEOUT);
+            await page.setUserAgent(config.userAgent);
+            page.setDefaultTimeout(config.timeout);
 
             try {
-              // Step 1: Initial navigation
-              console.log('🌐 Navigating to Spotify auth page...');
-              await page.goto(process.env.AUTH_URL, { waitUntil: 'networkidle2' });
-
-              // Check if already authorized
-              if (page.url().includes('callback?code=')) {
-                console.log('✅ Already authenticated');
-                return;
-              }
-
-              // Step 2: Handle cookies
-              if (await safeClick(page, '#onetrust-accept-btn-handler') || 
-                  await clickByText(page, 'accept cookies')) {
-                console.log('🍪 Accepted cookies');
-                await delay(2000);
-              }
-
-              // Step 3: Email entry
-              console.log('📧 Entering email...');
-              await typeWithDelay(page, 'input[type="email"], #login-username', process.env.SPOTIFY_USERNAME);
-              
-              if (!(await safeClick(page, 'button[data-testid="login-button"]') ||
-                    await clickByText(page, 'continue'))) {
-                throw new Error('Continue button not found');
-              }
-              await delay(3000);
-
-              // Step 4: Handle OTP/password choice
-              const needsPassword = await page.evaluate(() => 
-                Array.from(document.querySelectorAll('*'))
-                  .some(el => el.textContent?.includes('6-digit code'))
-              );
-
-              if (needsPassword) {
-                console.log('🔄 Switching to password login...');
-                if (!(await clickByText(page, 'log in with a password') ||
-                      await safeClick(page, 'button[data-encore-id="buttonTertiary"]'))) {
-                  throw new Error('Password login option not found');
-                }
-                await delay(3000);
-              }
-
-              // Step 5: Password entry
-              console.log('🔑 Entering password...');
-              await typeWithDelay(page, 'input[type="password"], #login-password', process.env.SPOTIFY_PASSWORD);
-              
-              if (!(await safeClick(page, 'button[data-testid="login-button"]') ||
-                    await clickByText(page, 'log in'))) {
-                throw new Error('Login button not found');
-              }
-              await delay(5000);
-
-              // Step 6: Handle authorization
-              let attempts = 0;
-              while (attempts < MAX_RETRIES && !page.url().includes('callback?code=')) {
-                attempts++;
-                console.log(`🔄 Authorization attempt ${attempts}/${MAX_RETRIES}`);
-                
-                if (await safeClick(page, '#auth-accept') ||
-                    await clickByText(page, 'agree')) {
-                  console.log('✅ Clicked authorization button');
-                  await delay(3000);
-                }
-                
-                // Check for errors
-                const error = await page.evaluate(() => {
-                  const errorEl = document.querySelector('[role="alert"], .error');
-                  return errorEl?.textContent?.trim();
-                });
-                
-                if (error) throw new Error(`Spotify error: ${error}`);
-                
-                await delay(2000);
-              }
-
-              // Final verification
-              if (!page.url().includes('callback?code=')) {
-                throw new Error(`Authorization failed after ${MAX_RETRIES} attempts`);
+              const success = await handleSpotifyAuth(page);
+              if (!success) {
+                throw new AuthError(
+                  `Authorization failed after ${config.maxRetries} attempts`,
+                  ...await saveDebugArtifacts(page, 'final-error')
+                );
               }
 
               console.log('🎉 Successfully authenticated with Spotify!');
-
-            } catch (error) {
-              await handleErrors(page, error);
             } finally {
               await browser.close();
             }
           }
 
-          run().catch(e => {
-            console.error('Unhandled error:', e);
+          run().catch(async (error) => {
+            console.error('❌ Authentication failed:', error.message);
+            if (error.screenshotPath) {
+              console.log(`📸 Screenshot saved to: ${error.screenshotPath}`);
+            }
+            if (error.htmlPath) {
+              console.log(`📄 HTML saved to: ${error.htmlPath}`);
+            }
             process.exit(1);
           });
           EOF
@@ -231,6 +284,6 @@ jobs:
         with:
           name: auth-debug
           path: |
-            error-*.png
-            error-*.html
+            *.png
+            *.html
             proxy.log
