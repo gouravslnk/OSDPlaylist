@@ -199,12 +199,12 @@ jobs:
       - name: Terraform Plan
         env:
           SPOTIFY_API_KEY: ${{ env.SPOTIFY_API_KEY }}
-        run: terraform plan
+        run: terraform plan -var "SPOTIFY_API_KEY=${SPOTIFY_API_KEY}"
 
       - name: Terraform Apply
         env:
           SPOTIFY_API_KEY: ${{ env.SPOTIFY_API_KEY }}
-        run: terraform apply -auto-approve
+        run: terraform apply -auto-approve -var "SPOTIFY_API_KEY=${SPOTIFY_API_KEY}"
 
       - name: Upload debug artifacts
         if: failure()
