@@ -185,6 +185,9 @@ jobs:
           })();
           EOF
 
+      - name: Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -192,6 +195,24 @@ jobs:
 
       - name: Terraform Init
         run: terraform init
+
+      - name: Clean Terraform State if Playlist Invalid
+        env:
+          SPOTIFY_API_KEY: ${{ env.SPOTIFY_API_KEY }}
+        run: |
+          if grep -q "spotify_playlist" terraform.tfstate; then
+            echo "Checking playlist ownership..."
+            PLAYLIST_ID=$(jq -r '.resources[] | select(.type=="spotify_playlist") | .instances[0].attributes.id' terraform.tfstate)
+            RESPONSE=$(curl -s -H "Authorization: Bearer $SPOTIFY_API_KEY" https://api.spotify.com/v1/playlists/$PLAYLIST_ID)
+            if echo "$RESPONSE" | grep -q "\"error\""; then
+              echo "❌ Playlist does not exist or does not belong to current user. Resetting state..."
+              rm -f terraform.tfstate terraform.tfstate.backup
+            else
+              echo "✅ Playlist exists and belongs to user. Continuing..."
+            fi
+          else
+            echo "ℹ️ No playlist in state. Continuing..."
+          fi
 
       - name: Terraform Validate
         run: terraform validate
