@@ -8,7 +8,8 @@ terraform {
 }
 
 provider "spotify" {
-  api_key = var.SPOTIFY_API_KEY
+  api_key     = var.SPOTIFY_API_KEY
+  auth_server = "http://127.0.0.1:8080"
 }
 
 data "spotify_search_track" "RAM" {
