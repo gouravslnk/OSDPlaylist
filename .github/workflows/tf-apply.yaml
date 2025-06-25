@@ -190,6 +190,22 @@ jobs:
         with:
           terraform_version: 1.12.2
 
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        env:
+          SPOTIFY_API_KEY: ${{ env.SPOTIFY_API_KEY }}
+        run: terraform plan
+
+      - name: Terraform Apply
+        env:
+          SPOTIFY_API_KEY: ${{ env.SPOTIFY_API_KEY }}
+        run: terraform apply -auto-approve
+
       - name: Upload debug artifacts
         if: failure()
         uses: actions/upload-artifact@v4
