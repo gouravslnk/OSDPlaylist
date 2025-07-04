@@ -60,6 +60,10 @@ data "spotify_track" "supermassive_black_hole" {
   url = "https://open.spotify.com/track/3lPr8ghNDBLc2uZovNyLs9?si=6dac397517d3427f"
 }
 
+data "spotify_track" "Get_Lucky" {
+  url = "https://open.spotify.com/track/69kOkLUCkxIZYexIgSG8rq?si=945ac1a66e3e4033"
+}
+
 
 
 resource "spotify_playlist" "playlist" {
@@ -79,6 +83,7 @@ resource "spotify_playlist" "playlist" {
     data.spotify_track.instant_crush.id,
     data.spotify_track.nightcall.id,
     data.spotify_track.lady_hear_me_tonight.id,
-    data.spotify_track.supermassive_black_hole.id
+    data.spotify_track.supermassive_black_hole.id,
+    data.spotify_track.Get_Lucky.id
   ])
 }
