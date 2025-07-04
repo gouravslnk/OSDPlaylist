@@ -193,13 +193,6 @@ jobs:
         with:
           terraform_version: 1.12.2
 
-      - name: Restore Terraform State
-        uses: actions/download-artifact@v4
-        with:
-          name: terraform-state
-          path: .
-
-
       - name: Terraform Init
         run: terraform init
 
@@ -233,16 +226,6 @@ jobs:
         env:
           SPOTIFY_API_KEY: ${{ env.SPOTIFY_API_KEY }}
         run: terraform apply -auto-approve -var "SPOTIFY_API_KEY=${SPOTIFY_API_KEY}"
-
-      - name: Save Terraform State
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: terraform-state
-          path: |
-            terraform.tfstate
-            terraform.tfstate.backup
-
 
       - name: Upload debug artifacts
         if: failure()
