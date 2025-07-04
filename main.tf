@@ -72,6 +72,12 @@ data "spotify_track" "vigilante" {
   url = "https://open.spotify.com/track/2U7aXicPJAjJBYEIWIXsVI?si=dc24ab05cac54a43"
 }
 
+data "spotify_track" "horizon" {
+  url = "https://open.spotify.com/track/69fx4BG9cZFOrBJk5aXDeL?si=8f99804af0b842b8"
+}
+
+
+
 
 
 resource "spotify_playlist" "playlist" {
@@ -94,6 +100,7 @@ resource "spotify_playlist" "playlist" {
     data.spotify_track.supermassive_black_hole.id,
     data.spotify_track.Get_Lucky.id,
     data.spotify_track.starlight.id,
-    data.spotify_track.vigilante.id
+    data.spotify_track.vigilante.id,
+    data.spotify_track.horizon.id
   ])
 }
