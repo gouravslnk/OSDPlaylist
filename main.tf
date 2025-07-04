@@ -64,7 +64,7 @@ data "spotify_track" "Get_Lucky" {
   url = "https://open.spotify.com/track/69kOkLUCkxIZYexIgSG8rq?si=945ac1a66e3e4033"
 }
 
-data "spotify_search" "starlight" {
+data "spotify_track" "starlight" {
   url = "https://open.spotify.com/track/5luWJxS799LLp2e88RffUx?si=ac548be34f354912"
 }
 
