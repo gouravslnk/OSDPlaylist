@@ -68,6 +68,10 @@ data "spotify_track" "starlight" {
   url = "https://open.spotify.com/track/5luWJxS799LLp2e88RffUx?si=ac548be34f354912"
 }
 
+data "spotify_track" "vigilante" {
+  url = "https://open.spotify.com/track/2U7aXicPJAjJBYEIWIXsVI?si=dc24ab05cac54a43"
+}
+
 
 
 resource "spotify_playlist" "playlist" {
@@ -89,6 +93,7 @@ resource "spotify_playlist" "playlist" {
     data.spotify_track.lady_hear_me_tonight.id,
     data.spotify_track.supermassive_black_hole.id,
     data.spotify_track.Get_Lucky.id,
-    data.spotify_track.starlight.id
+    data.spotify_track.starlight.id,
+    data.spotify_track.vigilante.id
   ])
 }
