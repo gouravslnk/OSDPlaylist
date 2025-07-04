@@ -89,6 +89,6 @@ resource "spotify_playlist" "playlist" {
     data.spotify_track.lady_hear_me_tonight.id,
     data.spotify_track.supermassive_black_hole.id,
     data.spotify_track.Get_Lucky.id,
-    data.spotify_search.starlight[*].id
+    data.spotify_track.starlight.id
   ])
 }
