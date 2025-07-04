@@ -64,6 +64,10 @@ data "spotify_track" "Get_Lucky" {
   url = "https://open.spotify.com/track/69kOkLUCkxIZYexIgSG8rq?si=945ac1a66e3e4033"
 }
 
+data "spotify_search" "starlight" {
+  url = "https://open.spotify.com/track/5luWJxS799LLp2e88RffUx?si=ac548be34f354912"
+}
+
 
 
 resource "spotify_playlist" "playlist" {
@@ -84,6 +88,7 @@ resource "spotify_playlist" "playlist" {
     data.spotify_track.nightcall.id,
     data.spotify_track.lady_hear_me_tonight.id,
     data.spotify_track.supermassive_black_hole.id,
-    data.spotify_track.Get_Lucky.id
+    data.spotify_track.Get_Lucky.id,
+    data.spotify_search.starlight[*].id
   ])
 }
