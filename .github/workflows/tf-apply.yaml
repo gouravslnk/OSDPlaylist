@@ -23,7 +23,7 @@ jobs:
       - name: Install patched spotify_auth_proxy from fork
         run: |
           echo "$HOME/go/bin" >> $GITHUB_PATH
-          git clone -b fix/base-url-127 https://github.com/gauravslnk/terraform-provider-spotify
+          git clone -b fix/base-url-127 https://github.com/gouravslnk/terraform-provider-spotify
           cd terraform-provider-spotify/spotify_auth_proxy
           go build -o $HOME/go/bin/spotify_auth_proxy .
           if ! command -v spotify_auth_proxy &> /dev/null; then

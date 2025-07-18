@@ -9,7 +9,7 @@ terraform {
 
 provider "spotify" {
   api_key     = var.SPOTIFY_API_KEY
-  auth_server = "http://127.0.0.1:8080"
+  auth_server = "http://127.0.0.1:8080" //change the port if you want
 }
 
 data "spotify_search_track" "RAM" {
@@ -75,10 +75,6 @@ data "spotify_track" "vigilante" {
 data "spotify_track" "horizon" {
   url = "https://open.spotify.com/track/69fx4BG9cZFOrBJk5aXDeL?si=8f99804af0b842b8"
 }
-
-
-
-
 
 resource "spotify_playlist" "playlist" {
   name        = "The CodeJam Playlist"
